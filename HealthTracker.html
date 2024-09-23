@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Health Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, #f9f9f9, #fff);
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        #waterSection { background: linear-gradient(to bottom, #e0f7fa, #b2ebf2); }
+        #foodSection { background: linear-gradient(to bottom, #fffde7, #fff9c4); }
+        #medicineSection { background: linear-gradient(to bottom, #e8f5e9, #c8e6c9); }
+        #sleepSection { background: linear-gradient(to bottom, #f3e5f5, #e1bee7); }
+        input, select, button {
+            padding: 5px;
+            margin: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background: #5bc0de;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        button:hover {
+            background: #31b0d5;
+        }
+        table {
+            width: 100%;
+            margin-top: 10px;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #f0f0f0;
+        }
+        .remove-btn {
+            color: red;
+            cursor: pointer;
+            font-size: 1.1em;
+            border: none;
+            background: none;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Health Tracker</h1>
+<input type="date" id="dateSelector" onchange="updateDate()">
+
+<div class="section" id="waterSection">
+    <h2>Water Intake</h2>
+    <input type="number" id="waterAmount" placeholder="Amount (ml)">
+    <button onclick="logWater()">Log Water</button>
+    <table id="waterTable">
+        <tr><th>Time</th><th>Amount (ml)</th></tr>
+    </table>
+</div>
+
+<div class="section" id="foodSection">
+    <h2>Food Intake</h2>
+    <select id="foodCategory">
+        <option value="">Select Category</option>
+        <option value="Breakfast">Breakfast</option>
+        <option value="Morning Snack">Morning Snack</option>
+        <option value="Lunch">Lunch</option>
+        <option value="Evening Snack">Evening Snack</option>
+        <option value="Dinner">Dinner</option>
+    </select>
+    <input type="number" id="foodCalories" placeholder="Calories">
+    <button onclick="logFood()">Log Food</button>
+    <table id="foodTable">
+        <tr><th>Food Category</th><th>Calories</th></tr>
+    </table>
+</div>
+
+<div class="section" id="medicineSection">
+    <h2>Medicines</h2>
+    <div id="medicineSelection">
+        <input type="text" id="medicineName" placeholder="Medicine Name">
+        <button onclick="addMedicine()">Add Medicine</button>
+        <div id="medicineSelectionTable"></div>
+    </div>
+    <input type="time" id="medicineTime">
+    <button onclick="logMedicine()">Log Medicine</button>
+    <table id="medicineTable">
+        <tr><th>Medicine</th><th>Time</th><th>Remove</th></tr>
+    </table>
+</div>
+
+<div class="section" id="sleepSection">
+    <h2>Sleep</h2>
+    <input type="time" id="sleepStart">
+    <input type="time" id="sleepEnd">
+    <button onclick="logSleep()">Log Sleep</button>
+    <table id="sleepTable">
+        <tr><th>Start</th><th>End</th><th>Duration (hrs)</th></tr>
+    </table>
+</div>
+
+<div>
+    <h2>Summary</h2>
+    <p id="summary"></p>
+    <button onclick="showWeeklySummary()">Weekly Summary</button>
+
+    <button onclick="downloadPDF()">Download PDF</button>
+</div>
+
+<script>
+    const today = new Date().toISOString().split('T')[0];
+    const data = JSON.parse(localStorage.getItem('healthData')) || {
+        water: [],
+        food: [],
+        medicines: [],
+        sleep: []
+    };
+    const medicineList = JSON.parse(localStorage.getItem('medicineList')) || [];
+
+    function updateLocalStorage() {
+        localStorage.setItem('healthData', JSON.stringify(data));
+        localStorage.setItem('medicineList', JSON.stringify(medicineList));
+    }
+
+    function updateDate() {
+        const selectedDate = document.getElementById("dateSelector").value || today;
+        renderLogs(selectedDate);
+        updateSummary(selectedDate);
+    }
+
+    function updateSummary(date) {
+        const waterTotal = data.water.filter(entry => entry.date === date).reduce((sum, entry) => sum + entry.amount, 0);
+        const caloriesTotal = data.food.filter(entry => entry.date === date).reduce((sum, entry) => sum + entry.calories, 0);
+        const medicinesTotal = data.medicines.filter(entry => entry.date === date).length;
+        const sleepTotal = data.sleep.filter(entry => entry.date === date).reduce((sum, entry) => sum + entry.duration, 0);
+
+        const summaryText = `
+            Total Water Intake: ${waterTotal} ml<br>
+            Total Calories: ${caloriesTotal} cal<br>
+            Total Medicines Taken: ${medicinesTotal}<br>
+            Total Sleep Duration: ${sleepTotal.toFixed(2)} hrs
+        `;
+        document.getElementById("summary").innerHTML = summaryText;
+    }
+
+    function renderLogs(selectedDate) {
+        document.getElementById("waterTable").innerHTML = `<tr><th>Time</th><th>Amount (ml)</th></tr>`;
+        document.getElementById("foodTable").innerHTML = `<tr><th>Food Category</th><th>Calories</th></tr>`;
+        document.getElementById("medicineTable").innerHTML = `<tr><th>Medicine</th><th>Time</th><th>Remove</th></tr>`;
+        document.getElementById("sleepTable").innerHTML = `<tr><th>Start</th><th>End</th><th>Duration (hrs)</th></tr>`;
+
+        data.water.forEach(entry => {
+            if (entry.date === selectedDate) {
+                const table = document.getElementById("waterTable");
+                const row = table.insertRow(-1);
+                row.insertCell(0).innerText = entry.time;
+                row.insertCell(1).innerText = entry.amount;
+            }
+        });
+
+        data.food.forEach(entry => {
+            if (entry.date === selectedDate) {
+                const table = document.getElementById("foodTable");
+                const row = table.insertRow(-1);
+                row.insertCell(0).innerText = entry.food;
+                row.insertCell(1).innerText = entry.calories;
+            }
+        });
+
+        data.medicines.forEach((entry, index) => {
+            if (entry.date === selectedDate) {
+                const table = document.getElementById("medicineTable");
+                const row = table.insertRow(-1);
+                row.insertCell(0).innerText = entry.medicine;
+                row.insertCell(1).innerText = entry.time;
+                const removeCell = row.insertCell(2);
+                removeCell.innerHTML = `<button class="remove-btn" onclick="removeMedicine(${index}, '${selectedDate}')">✖</button>`;
+            }
+        });
+
+        data.sleep.forEach(entry => {
+            if (entry.date === selectedDate) {
+                const table = document.getElementById("sleepTable");
+                const row = table.insertRow(-1);
+                row.insertCell(0).innerText = entry.start;
+                row.insertCell(1).innerText = entry.end;
+                row.insertCell(2).innerText = entry.duration.toFixed(2);
+            }
+        });
+    }
+
+    function logWater() {
+        const date = document.getElementById("dateSelector").value || today;
+        const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const amount = parseInt(document.getElementById("waterAmount").value);
+        if (!isNaN(amount)) {
+            data.water.push({ date, time, amount });
+            updateSummary(date);
+            renderLogs(date);
+            document.getElementById("waterAmount").value = '';
+        }
+    }
+
+    function logFood() {
+        const date = document.getElementById("dateSelector").value || today;
+        const foodCategory = document.getElementById("foodCategory").value;
+        const calories = parseInt(document.getElementById("foodCalories").value);
+        if (foodCategory && !isNaN(calories)) {
+            data.food.push({ date, food: foodCategory, calories });
+            updateSummary(date);
+            renderLogs(date);
+            document.getElementById("foodCalories").value = '';
+            document.getElementById("foodCategory").selectedIndex = 0; // Reset selection
+        }
+    }
+
+    function addMedicine() {
+        const medicine = document.getElementById("medicineName").value;
+        if (medicine) {
+            medicineList.push(medicine);
+            updateLocalStorage();
+            renderMedicineSelection();
+            document.getElementById("medicineName").value = '';
+        }
+    }
+
+    function renderMedicineSelection() {
+        const selectionDiv = document.getElementById("medicineSelectionTable");
+        selectionDiv.innerHTML = '';
+        medicineList.forEach((medicine, index) => {
+            const label = document.createElement('label');
+            label.innerHTML = `
+                <input type="checkbox" value="${medicine}"> ${medicine}
+                <button class="remove-btn" onclick="removeMedicineFromList(${index})">✖</button>
+            `;
+            selectionDiv.appendChild(label);
+        });
+    }
+
+    function removeMedicineFromList(index) {
+        medicineList.splice(index, 1);
+        updateLocalStorage();
+        renderMedicineSelection();
+    }
+
+    function logMedicine() {
+        const date = document.getElementById("dateSelector").value || today;
+        const time = document.getElementById("medicineTime").value;
+        const checkedMedicines = Array.from(document.querySelectorAll("#medicineSelectionTable input:checked")).map(input => input.value);
+        
+        checkedMedicines.forEach(medicine => {
+            data.medicines.push({ date, medicine, time });
+        });
+        updateSummary(date);
+        renderLogs(date);
+        document.getElementById("medicineTime").value = '';
+    }
+
+    function logSleep() {
+        const date = document.getElementById("dateSelector").value || today;
+        const start = document.getElementById("sleepStart").value;
+        const end = document.getElementById("sleepEnd").value;
+
+        const startDate = new Date(`1970-01-01T${start}:00`);
+        const endDate = new Date(`1970-01-01T${end}:00`);
+        const duration = (endDate - startDate) / (1000 * 60 * 60); // in hours
+
+        if (duration > 0) {
+            data.sleep.push({ date, start, end, duration });
+            updateSummary(date);
+            renderLogs(date);
+            document.getElementById("sleepStart").value = '';
+            document.getElementById("sleepEnd").value = '';
+        }
+    }
+
+    function removeMedicine(index, date) {
+        data.medicines.splice(index, 1);
+        updateLocalStorage();
+        renderLogs(date);
+        updateSummary(date);
+    }
+
+function showWeeklySummary() {
+        let weeklySummary = '';
+        const today = new Date();
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() - i);
+            const formattedDate = date.toISOString().split('T')[0];
+            const waterTotal = data.water.filter(entry => entry.date === formattedDate).reduce((sum, entry) => sum + entry.amount, 0);
+            const caloriesTotal = data.food.filter(entry => entry.date === formattedDate).reduce((sum, entry) => sum + entry.calories, 0);
+            const medicinesTotal = data.medicines.filter(entry => entry.date === formattedDate).length;
+            const sleepTotal = data.sleep.filter(entry => entry.date === formattedDate).reduce((sum, entry) => sum + entry.duration, 0);
+
+            weeklySummary += `
+                <strong>${formattedDate}</strong>: 
+                Water: ${waterTotal} ml, 
+                Calories: ${caloriesTotal}, 
+                Medicines: ${medicinesTotal}, 
+                Sleep: ${sleepTotal.toFixed(2)} hrs<br>
+            `;
+        }
+        alert(weeklySummary); // You can modify this to display in a different way if needed
+    }
+function downloadPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Check if a date is selected
+    const dateInput = document.getElementById("dateSelector").value;
+    if (!dateInput) {
+        alert("Please select a date first.");
+        return;
+    }
+
+    const startDate = new Date(dateInput);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6);
+
+    let pdfContent = 'Weekly Summary\n\n';
+    for (let d = startDate; d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dateString = d.toISOString().split('T')[0];
+        const waterTotal = data.water.filter(entry => entry.date === dateString).reduce((sum, entry) => sum + entry.amount, 0);
+        const caloriesTotal = data.food.filter(entry => entry.date === dateString).reduce((sum, entry) => sum + entry.calories, 0);
+        const medicinesTotal = data.medicines.filter(entry => entry.date === dateString).length;
+        const sleepTotal = data.sleep.filter(entry => entry.date === dateString).reduce((sum, entry) => sum + entry.duration, 0);
+
+        pdfContent += `Date: ${dateString} - Water: ${waterTotal} ml, Calories: ${caloriesTotal}, Medicines: ${medicinesTotal}, Total Sleep: ${sleepTotal.toFixed(2)} hrs\n`;
+    }
+
+    // Add content to the PDF
+    doc.setFontSize(12);
+    doc.text(pdfContent, 10, 10); // Adjust coordinates as needed
+    doc.save('weekly_summary.pdf'); // Save the PDF
+}
+    function saveData() {
+        updateLocalStorage();
+    }
+
+    setInterval(saveData, 1000); // Save data to local storage every second
+    window.onload = updateDate; // Load data on page load
+
+    renderMedicineSelection(); // Load medicine selection on start
+</script>
+
+</body>
+</html>
